@@ -58,6 +58,18 @@ def extract_patches(images, patch_size: int):
 
     batch_size = ops.shape(images)[0]  # batch dim
     h, w, c = images.shape[1], images.shape[2], images.shape[3]
+
+    # Without this, a non-divisible size still fails -- but deep inside the
+    # graph, as an InvalidArgumentError about element counts that names neither
+    # patch_size nor the image. Fail here instead, where the cause is obvious.
+    # h and w are None under a symbolic build; there is nothing to check then.
+    for name, size in (("height", h), ("width", w)):
+        if size is not None and size % patch_size != 0:
+            raise ValueError(
+                f"image {name} {size} is not divisible by patch_size "
+                f"{patch_size}: the patches would not tile the image"
+            )
+
     gr, gc = h // patch_size, w // patch_size
 
     transpose_order = [0, 1, 3, 2, 4, 5]                              # B, gr, gc, py, px, C
@@ -121,6 +133,18 @@ def get_2d_sincos_pos_embed(embed_dim: int, grid_size: int) -> np.ndarray:
         np.ndarray, shape (grid_size * grid_size, embed_dim), row-major to
         match `extract_patches`.
     """
+    # The one failure here that is worth guarding, because it is silent: the
+    # budget is halved for row/col and halved again for sin/cos, so a value
+    # like 130 floors twice and yields a 128-wide table instead. No error, just
+    # a positional code two dimensions too narrow for the tokens it is added
+    # to -- which then fails far away, or broadcasts into something plausible.
+    if embed_dim % 4 != 0:
+        raise ValueError(
+            f"embed_dim {embed_dim} is not divisible by 4: the budget splits "
+            f"row/col and then sin/cos, so the table would come out "
+            f"{4 * (embed_dim // 4)} wide instead of {embed_dim}"
+        )
+
     # Row-major coordinates: the row varies slowly, the column varies fast.
     #   rows = 0,0,...,0, 1,1,...,1, ...   cols = 0,1,...,7, 0,1,...,7, ...
     # This is the order extract_patches emits its tokens in.
