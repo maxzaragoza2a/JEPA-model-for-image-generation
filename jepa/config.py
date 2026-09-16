@@ -33,6 +33,18 @@ class JEPAConfig:
     predictor_depth: int = 2
     predictor_num_heads: int = 4
 
+    # ---- Masking ----------------------------------------------------------
+    # The self-supervised task: hide a few rectangular blocks of the patch grid
+    # and ask the model to predict what is in them, given the rest.
+    #
+    # Blocks -- not scattered patches -- because neighbouring patches look alike,
+    # so an isolated hidden patch can be interpolated from its visible
+    # neighbours. A whole rectangle cannot: the model has to understand.
+    num_target_blocks: int = 4        # how many rectangles to predict
+    target_scale: tuple = (0.15, 0.20)   # area of one target, as a fraction of the grid
+    target_aspect_ratio: tuple = (0.75, 1.5)  # height/width; 1.0 would be square
+    context_scale: tuple = (0.85, 1.00)  # area of the single context block
+
     # ---- Training ---------------------------------------------------------
     batch_size: int = 128
     epochs: int = 30
