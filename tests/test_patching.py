@@ -19,7 +19,11 @@ import numpy as np
 import pytest
 
 from jepa.config import JEPAConfig
-from jepa.patch_embed import PatchEmbedding, extract_patches
+from jepa.patch_embed import (
+    PatchEmbedding,
+    extract_patches,
+    get_2d_sincos_pos_embed,
+)
 
 
 def unpatchify(patches, patch_size, grid_h, grid_w, channels):
@@ -153,3 +157,35 @@ def test_positions_are_what_make_identical_patches_differ(rng):
     # ...and they differ by exactly the two positional vectors.
     pos = np.asarray(layer.pos_embed)
     assert np.allclose(token_a - pos[0], token_b - pos[9], atol=1e-5)
+
+
+# ---- input guards ----------------------------------------------------------
+#
+# Both functions used to accept bad arguments. One then failed far away with a
+# message about element counts; the other did not fail at all.
+
+@pytest.mark.parametrize("h,w", [(30, 32), (32, 30), (33, 33)])
+def test_extract_patches_rejects_a_size_it_cannot_tile(h, w):
+    """A patch size that does not divide the image is refused up front."""
+    images = np.zeros((1, h, w, 3), "float32")
+
+    with pytest.raises(ValueError, match="not divisible by patch_size"):
+        extract_patches(images, 4)
+
+
+@pytest.mark.parametrize("embed_dim", [2, 6, 126, 130])
+def test_sincos_rejects_a_width_it_would_silently_narrow(embed_dim):
+    """The dangerous one: this used to succeed and return a shorter table.
+
+    The budget is halved for row/col and halved again for sin/cos, so 130
+    floors down to 128. The caller gets a positional code two dimensions
+    narrower than the tokens it will be added to, with nothing said.
+    """
+    with pytest.raises(ValueError, match="not divisible by 4"):
+        get_2d_sincos_pos_embed(embed_dim, 8)
+
+
+@pytest.mark.parametrize("embed_dim", [4, 64, 128])
+def test_sincos_returns_the_full_requested_width(embed_dim):
+    """The flip side: a valid width comes back whole, not rounded down."""
+    assert get_2d_sincos_pos_embed(embed_dim, 8).shape == (64, embed_dim)
