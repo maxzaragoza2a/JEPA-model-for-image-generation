@@ -17,6 +17,9 @@ runs/
 # Datasets are cached by Keras in ~/.keras/datasets, not in the repo.
 data/
 
+# Figures written by `python -m jepa.visualise`.
+masked_samples.png
+
 # Notebooks / editors
 .ipynb_checkpoints/
 .vscode/
